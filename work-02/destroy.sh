@@ -1,20 +1,42 @@
 #!/usr/bin/env bash
 set -euo pipefail            # стоп на первой ошибке и на пустой переменной
 
-PREFIX=kuznetsov-01            # у вас — свои значения из варианта
-VM_COUNT=2
+PREFIX=kuznetsov-01          # префикс из варианта; число машин здесь не нужно
 
-# сначала то, что ссылается на другие ресурсы
-yc load-balancer network-load-balancer delete "$PREFIX-lb"
-yc load-balancer target-group delete "$PREFIX-tg"
+delete_res() {
+  local kind=$1 name=$2
+  local list
+  list=$(yc $kind list --format json)
+  if jq -e --arg n "$name" 'any(.[]; .name == $n)' <<< "$list" > /dev/null; then
+    echo "  удаляю: $kind $name"
+    yc $kind delete "$name"
+  else
+    echo "  уже нет: $kind $name — пропускаю"
+  fi
+}
 
-for i in $(seq 1 "$VM_COUNT"); do
-  yc compute instance delete "$PREFIX-app-$i"
+echo "==> балансировщик и целевая группа"
+delete_res "load-balancer network-load-balancer" "$PREFIX-lb"
+delete_res "load-balancer target-group" "$PREFIX-tg"
+
+echo "==> машины"
+VMS=$(yc compute instance list --format json \
+  | jq -r --arg p "$PREFIX-app-" '.[] | select((.name // "") | startswith($p)) | .name')
+if [ -z "$VMS" ]; then
+  echo "  машин с префиксом $PREFIX-app- нет — пропускаю"
+fi
+for vm in $VMS; do
+  echo "  удаляю: compute instance $vm"
+  yc compute instance delete "$vm"
 done
 
-yc compute disk delete "$PREFIX-data"
+echo "==> диск"
+delete_res "compute disk" "$PREFIX-data"
 
-yc vpc subnet delete "$PREFIX-subnet-a"
-yc vpc subnet delete "$PREFIX-subnet-b"
-yc vpc network delete "$PREFIX-net"
+echo "==> подсети и сеть"
+delete_res "vpc subnet" "$PREFIX-subnet-a"
+delete_res "vpc subnet" "$PREFIX-subnet-b"
+delete_res "vpc network" "$PREFIX-net"
+
+echo "==> готово"
 

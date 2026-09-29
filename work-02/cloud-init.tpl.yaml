@@ -1,25 +1,30 @@
 #cloud-config
-# по этой строке cloud-init понимает, что перед ним конфигурация, а не текст
 
 users:
-  - name: student                       # логин, под которым будете заходить по SSH
-    groups: sudo                        # членство в группе даёт право на sudo
+  - name: student
+    groups: sudo
     shell: /bin/bash
-    sudo: ['ALL=(ALL) NOPASSWD:ALL']    # без пароля: пароля у пользователя и нет
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
     ssh_authorized_keys:
       - ${SSH_KEY}
 
-package_update: true                    # обновить список пакетов перед установкой
+package_update: true
 
 packages:
-  - nginx                               # ставится при первой загрузке машины
+  - nginx
 
 runcmd:
-  # меняем порт в конфигурации nginx: сначала IPv4, потом IPv6
+  # --- дополнительный диск ---
+  - |
+    if [ -b /dev/disk/by-id/virtio-data ]; then
+      blkid /dev/disk/by-id/virtio-data || mkfs.ext4 -q /dev/disk/by-id/virtio-data
+      mkdir -p /mnt/data
+      echo '/dev/disk/by-id/virtio-data /mnt/data ext4 defaults,nofail 0 2' >> /etc/fstab
+      mount /mnt/data
+    fi
+  # --- nginx: порт и страница ---
   - sed -i 's/listen 80 default_server;/listen ${APP_PORT} default_server;/' /etc/nginx/sites-available/default
   - sed -i 's/listen \[::\]:80 default_server;/listen [::]:${APP_PORT} default_server;/' /etc/nginx/sites-available/default
-  # страницу перезаписываем целиком: слово варианта и имя машины в одной строке
-  - bash -c 'echo " ${GREETING} on $(hostname)" > /var/www/html/index.nginx-debian.html'
-  - nginx -t                            # проверка конфигурации: опечатка вылезет здесь
-  - systemctl restart nginx             # без перезапуска nginx остался бы на порту 80
-
+  - bash -c 'echo "${GREETING} on $(hostname)" > /var/www/html/index.nginx-debian.html'
+  - nginx -t
+  - systemctl restart nginx
