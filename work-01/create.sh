@@ -29,6 +29,7 @@ for N in 1 2; do
     --preemptible \
     --create-boot-disk image-folder-id=standard-images,image-family="$IMAGE_FAMILY",type=network-hdd,size="$DISK_SIZE" \
     --network-interface subnet-name="$PREFIX-subnet",nat-ip-version=ipv4 \
+    --hostname "$PREFIX-app-$N" \
     --ssh-key ~/.ssh/id_ed25519.pub \
     --labels created-by=script
 done
